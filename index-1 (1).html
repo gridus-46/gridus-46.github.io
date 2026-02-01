@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Manager</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f7f7f7; margin:0; padding:16px; }
+h1,h2 { margin:8px 0; }
+.card { background:#fff; padding:12px; margin-bottom:12px; border-radius:8px; }
+.row { display:flex; gap:8px; flex-wrap:wrap; }
+button { padding:6px 12px; cursor:pointer; }
+input, select { padding:6px; width:100%; max-width:300px; }
+.task { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #eee; padding:6px 0; }
+.done { text-decoration: line-through; color:gray; }
+.priority-Cao { color:red; }
+.priority-Trung_binh { color:orange; }
+.priority-Thap { color:green; }
+.progress { height:8px; background:#ddd; border-radius:4px; overflow:hidden; }
+.progress > div { height:100%; background:#000; width:0%; }
+.label { font-size:13px; color:#555; margin-top:6px; display:block; }
+#guide {
+  position:fixed; inset:0; background:rgba(0,0,0,.6);
+  display:none; align-items:center; justify-content:center;
+}
+#guide .box {
+  background:#fff; padding:16px; max-width:400px; border-radius:8px;
+}
+</style>
+</head>
+<body>
+
+<div id="guide">
+  <div class="box">
+    <h2>Hướng dẫn nhanh</h2>
+    <ul>
+      <li>Tạo công việc với mức ưu tiên</li>
+      <li>Đánh dấu hoàn thành khi xong</li>
+      <li>Xem thống kê theo thời gian</li>
+    </ul>
+    <button onclick="skipGuide()">Bỏ qua</button>
+  </div>
+</div>
+
+<h1>Dashboard</h1>
+
+<div class="card">
+  <div>Tiến độ</div>
+  <div class="progress"><div id="bar"></div></div>
+  <small id="percent">0%</small>
+</div>
+
+<div class="card">
+  <h2>Thống kê</h2>
+  <select id="statRange" onchange="renderStats()">
+    <option value="day">1 ngày</option>
+    <option value="month">1 tháng</option>
+    <option value="year">1 năm</option>
+  </select>
+  <div id="stats"></div>
+</div>
+
+<div class="card">
+  <h2>Tạo / Chỉnh sửa công việc</h2>
+  <label class="label">Tiêu đề</label>
+  <input id="title">
+  <label class="label">Mô tả</label>
+  <input id="desc">
+  <label class="label">Hạn hoàn thành</label>
+  <input type="date" id="endDate">
+  <label class="label">Ưu tiên</label>
+  <select id="priority">
+    <option value="Cao">Cao</option>
+    <option value="Trung_binh" selected>Trung bình</option>
+    <option value="Thap">Thấp</option>
+  </select><br><br>
+  <button onclick="saveTask()">Lưu</button>
+</div>
+
+<div class="card">
+  <h2>Danh sách công việc</h2>
+  <div id="tasks"></div>
+</div>
+
+<script>
+const titleInput = document.getElementById("title");
+const descInput = document.getElementById("desc");
+const endDateInput = document.getElementById("endDate");
+const priorityInput = document.getElementById("priority");
+const tasksDiv = document.getElementById("tasks");
+const bar = document.getElementById("bar");
+const percent = document.getElementById("percent");
+const stats = document.getElementById("stats");
+const statRange = document.getElementById("statRange");
+
+let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
+let editId = null;
+
+if (!localStorage.getItem("used")) {
+  document.getElementById("guide").style.display = "flex";
+}
+
+function skipGuide() {
+  localStorage.setItem("used", "1");
+  document.getElementById("guide").style.display = "none";
+}
+
+function saveTask() {
+  const t = {
+    id: editId || Date.now(),
+    title: titleInput.value,
+    desc: descInput.value,
+    endDate: endDateInput.value,
+    priority: priorityInput.value,
+    status: "Chưa làm",
+    created: new Date().toISOString()
+  };
+  tasks = editId
+    ? tasks.map(x => x.id === editId ? t : x)
+    : [...tasks, t];
+  editId = null;
+  persist();
+}
+
+function toggle(id) {
+  tasks = tasks.map(t =>
+    t.id === id
+      ? { ...t, status: t.status === "Hoàn thành" ? "Chưa làm" : "Hoàn thành" }
+      : t
+  );
+  persist();
+}
+
+function removeTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  persist();
+}
+
+function persist() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  render();
+}
+
+function render() {
+  tasksDiv.innerHTML = "";
+  tasks.forEach(t => {
+    const d = document.createElement("div");
+    d.className = "task";
+    d.innerHTML = `
+      <div class="${t.status === "Hoàn thành" ? "done" : ""} priority-${t.priority}">
+        <strong>${t.title}</strong> (${t.priority})<br>
+        Hạn: ${t.endDate || "-"}
+      </div>
+      <div>
+        <button onclick="toggle(${t.id})">✓</button>
+        <button onclick="removeTask(${t.id})">🗑</button>
+      </div>`;
+    tasksDiv.appendChild(d);
+  });
+
+  const done = tasks.filter(t => t.status === "Hoàn thành").length;
+  const p = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+  bar.style.width = p + "%";
+  percent.innerText = p + "%";
+  renderStats();
+}
+
+function renderStats() {
+  const r = statRange.value;
+  const now = new Date();
+  const from = new Date(now);
+
+  if (r === "day") from.setDate(now.getDate() - 1);
+  if (r === "month") from.setMonth(now.getMonth() - 1);
+  if (r === "year") from.setFullYear(now.getFullYear() - 1);
+
+  const filtered = tasks.filter(t => new Date(t.created) >= from);
+  const done = filtered.filter(t => t.status === "Hoàn thành").length;
+  const undone = filtered.length - done;
+  stats.innerText = `Hoàn thành: ${done} | Chưa hoàn: ${undone}`;
+}
+
+render();
+</script>
+
+</body>
+</html>
